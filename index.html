@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#101226">
+<title>TJ</title>
+<style>
+:root{--bg:#101226;--panel:#1a1d3a;--ink:#f2f0ff;--muted:#9a9cc4;--listen:#2ee6c0;--think:#8c7bff;--speak:#ffb347;--line:#2b2f5a}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Noto Sans Telugu","Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
+header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;gap:10px}
+header b{font-size:20px;letter-spacing:.5px}
+select,input{font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+input{width:120px}
+main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:10px 18px;min-height:0}
+#orb{width:min(58vw,240px);aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;color:#101226;font-size:20px;font-weight:700;background:var(--muted);transition:background .25s,transform .25s;box-shadow:0 0 0 0 rgba(255,255,255,.0)}
+#orb:focus-visible{outline:3px solid var(--ink);outline-offset:6px}
+#orb[data-s="listening"]{background:var(--listen);animation:pulse 1.6s ease-in-out infinite}
+#orb[data-s="thinking"]{background:var(--think);animation:pulse 0.9s ease-in-out infinite}
+#orb[data-s="speaking"]{background:var(--speak);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@media (prefers-reduced-motion:reduce){#orb{animation:none!important}}
+#status{font-size:18px;min-height:26px;text-align:center}
+#interim{color:var(--muted);min-height:24px;text-align:center;max-width:620px}
+#notice{color:var(--speak);text-align:center;max-width:620px;min-height:20px;font-size:14px}
+#lines{width:100%;max-width:620px;overflow-y:auto;max-height:30vh;display:flex;flex-direction:column;gap:8px}
+.l{padding:9px 13px;border-radius:14px;line-height:1.5;max-width:88%}
+.u{align-self:flex-end;background:var(--line)}
+.a{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
+footer{padding:8px 18px 14px;text-align:center;font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <b>TJ</b>
+  <div style="display:flex;gap:8px;align-items:center">
+    <input id="code" type="password" placeholder="Access code" aria-label="Access code" autocomplete="off">
+    <select id="lang" aria-label="Language">
+      <option value="te-IN">తెలుగు</option>
+      <option value="en-IN">English</option>
+    </select>
+  </div>
+</header>
+<main>
+  <button id="orb" data-s="idle" aria-label="Start talking">Talk</button>
+  <div id="status" aria-live="polite">Tap once, then just speak.</div>
+  <div id="interim"></div>
+  <div id="notice" aria-live="polite"></div>
+  <div id="lines"></div>
+</main>
+<footer>TJ is an AI and can make mistakes. Tap the circle again to stop.</footer>
+<script>
+(function(){
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var orb = document.getElementById('orb'), statusEl = document.getElementById('status'),
+      interim = document.getElementById('interim'), notice = document.getElementById('notice'),
+      lines = document.getElementById('lines'), langSel = document.getElementById('lang'),
+      codeEl = document.getElementById('code');
+  var active = false, rec = null, msgs = [];
+
+  var TEXT = {
+    'te-IN': {idle:'ఒక్కసారి నొక్కి, మాట్లాడండి.', listening:'వింటున్నాను...', thinking:'ఆలోచిస్తున్నాను...', speaking:'చెబుతున్నాను...', btnIdle:'మాట్లాడు', btnStop:'ఆపు'},
+    'en-IN': {idle:'Tap once, then just speak.', listening:'Listening...', thinking:'Thinking...', speaking:'Speaking...', btnIdle:'Talk', btnStop:'Stop'}
+  };
+  function T(){ return TEXT[langSel.value] || TEXT['en-IN']; }
+
+  try{ codeEl.value = localStorage.getItem('tj_code') || ''; }catch(e){}
+  codeEl.addEventListener('change', function(){ try{ localStorage.setItem('tj_code', codeEl.value); }catch(e){} });
+
+  function setState(s){
+    orb.dataset.s = s;
+    statusEl.textContent = T()[s] || T().idle;
+    orb.textContent = s === 'idle' ? T().btnIdle : T().btnStop;
+    orb.setAttribute('aria-label', s === 'idle' ? 'Start talking' : 'Stop');
+  }
+  function say(msg){ notice.textContent = msg || ''; }
+  function addLine(cls, text){
+    var d = document.createElement('div'); d.className = 'l ' + cls; d.textContent = text;
+    lines.appendChild(d); lines.scrollTop = lines.scrollHeight;
+  }
+
+  if(!SR){
+    say('This browser cannot listen. Open this page in Chrome on Android or desktop.');
+    orb.disabled = true;
+  }
+
+  // Voices
+  function findVoice(lang){
+    if(!('speechSynthesis' in window)) return null;
+    var p = lang.slice(0,2).toLowerCase();
+    var vs = speechSynthesis.getVoices().filter(function(v){ return v.lang && v.lang.toLowerCase().indexOf(p) === 0; });
+    return vs[0] || null;
+  }
+  function checkVoice(){
+    if(!('speechSynthesis' in window)) return;
+    if(langSel.value === 'te-IN' && speechSynthesis.getVoices().length && !findVoice('te-IN')){
+      say('No Telugu voice found on this device. Install one in phone Settings > Text-to-speech, or TJ will only show text.');
+    } else if(notice.textContent.indexOf('No Telugu voice') === 0){ say(''); }
+  }
+  if('speechSynthesis' in window){ speechSynthesis.onvoiceschanged = checkVoice; }
+  langSel.addEventListener('change', function(){ if(active) stop(); setState('idle'); checkVoice(); });
+
+  function speak(text, done){
+    if(!('speechSynthesis' in window)){ done(); return; }
+    var parts = text.split(/(?<=[.!?\u0964])\s+/).filter(Boolean);
+    var i = 0;
+    function next(){
+      if(!active || i >= parts.length){ done(); return; }
+      var u = new SpeechSynthesisUtterance(parts[i++]);
+      u.lang = langSel.value;
+      var v = findVoice(langSel.value); if(v) u.voice = v;
+      u.onend = next; u.onerror = next;
+      speechSynthesis.speak(u);
+    }
+    speechSynthesis.cancel();
+    next();
+  }
+
+  function listen(){
+    if(!active) return;
+    setState('listening'); interim.textContent = '';
+    var finalText = '';
+    rec = new SR(); rec.lang = langSel.value; rec.interimResults = true; rec.continuous = false;
+    rec.onresult = function(e){
+      var t = '';
+      for(var i=0;i<e.results.length;i++) t += e.results[i][0].transcript;
+      interim.textContent = t;
+      if(e.results[e.results.length-1].isFinal) finalText = t;
+    };
+    rec.onerror = function(e){
+      if(e.error === 'no-speech' || e.error === 'aborted') return;
+      if(e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+        say('Microphone is blocked. Tap the lock icon next to the address, allow Microphone, then reload.');
+        stop();
+      } else { say('Voice problem: ' + e.error); }
+    };
+    rec.onend = function(){
+      if(!active) return;
+      if(finalText.trim()) respond(finalText.trim()); else setTimeout(listen, 200);
+    };
+    try{ rec.start(); }catch(e){ setTimeout(listen, 400); }
+  }
+
+  async function respond(text){
+    setState('thinking'); interim.textContent = '';
+    addLine('u', text); msgs.push({role:'user', content:text});
+    try{
+      var r = await fetch('/api/chat', {
+        method:'POST',
+        headers:{'Content-Type':'application/json','x-access-code':codeEl.value},
+        body: JSON.stringify({messages:msgs, lang:langSel.value})
+      });
+      var data = await r.json();
+      if(!r.ok){ throw new Error(data.error || 'Request failed'); }
+      msgs.push({role:'assistant', content:data.text});
+      addLine('a', data.text);
+      if(!active) return;
+      setState('speaking');
+      speak(data.text, function(){ if(active) listen(); });
+    }catch(err){
+      msgs.pop();
+      say(err.message === 'Wrong access code.' ? 'Wrong access code. Enter it at the top right.' : 'Could not reach TJ: ' + err.message);
+      if(active) setTimeout(listen, 800);
+    }
+  }
+
+  function start(){ active = true; say(''); try{ speechSynthesis.cancel(); }catch(e){} listen(); }
+  function stop(){
+    active = false;
+    try{ rec && rec.abort(); }catch(e){}
+    try{ speechSynthesis.cancel(); }catch(e){}
+    interim.textContent = ''; setState('idle');
+  }
+  orb.addEventListener('click', function(){ active ? stop() : start(); });
+  setState('idle');
+})();
+</script>
+</body>
+</html>

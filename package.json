@@ -1,0 +1,8 @@
+{
+  "name": "tj-voice",
+  "version": "1.0.0",
+  "description": "TJ, a hands-free Telugu voice assistant",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
