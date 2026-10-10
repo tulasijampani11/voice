@@ -56,4 +56,49 @@ const server = http.createServer(async (req, res) => {
       const messages = (Array.isArray(body.messages) ? body.messages : [])
         .slice(-20)
         .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) }));
-      if (!messages.length ||
+      if (!messages.length || messages[messages.length - 1].role !== 'user') {
+        return send(res, 400, { error: 'Send a user message.' });
+      }
+
+      let text = '';
+      if (GKEY) {
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': GKEY },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt(lang) }] },
+            contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+            generationConfig: { maxOutputTokens: 400 }
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          console.error('Gemini error:', JSON.stringify(data));
+          return send(res, 502, { error: r.status === 429 ? 'Free limit reached. Wait a minute and try again.' : 'The AI service returned an error.' });
+        }
+        const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+        text = parts.map(p => p.text || '').join('\n').trim();
+      } else {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: MODEL, max_tokens: 400, system: systemPrompt(lang), messages })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          console.error('Anthropic error:', JSON.stringify(data));
+          return send(res, 502, { error: 'The AI service returned an error.' });
+        }
+        text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      }
+      return send(res, 200, { text });
+    }
+
+    send(res, 404, { error: 'Not found' });
+  } catch (err) {
+    console.error(err);
+    send(res, 500, { error: 'Server error.' });
+  }
+});
+
+server.listen(PORT, () => console.log('TJ is running on port ' + PORT));
