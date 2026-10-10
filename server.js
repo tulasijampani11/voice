@@ -116,4 +116,89 @@ const server = http.createServer(async (req, res) => {
       if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) {
         return send(res, 401, { error: 'Wrong access code.' });
       }
-      const body = JSON.parse(await
+      const body = JSON.parse(await readBody(req));
+      const lang = body.lang === 'en-IN' ? 'en-IN' : 'te-IN';
+      const messages = (Array.isArray(body.messages) ? body.messages : [])
+        .slice(-20)
+        .map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.content || '').slice(0, 2000) }));
+      if (!messages.length || messages[messages.length - 1].role !== 'user') {
+        return send(res, 400, { error: 'Send a user message.' });
+      }
+
+      let text = '';
+      if (GKEY) {
+        const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + MODEL + ':generateContent', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-goog-api-key': GKEY },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt(lang) }] },
+            contents: messages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })),
+            generationConfig: { maxOutputTokens: 400 }
+          })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          console.error('Gemini error:', JSON.stringify(data));
+          return send(res, 502, { error: r.status === 429 ? 'Free limit reached. Wait a minute and try again.' : 'The AI service returned an error.' });
+        }
+        const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+        text = parts.map(p => p.text || '').join('\n').trim();
+      } else {
+        const r = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-api-key': KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({ model: MODEL, max_tokens: 400, system: systemPrompt(lang), messages })
+        });
+        const data = await r.json();
+        if (!r.ok) {
+          console.error('Anthropic error:', JSON.stringify(data));
+          return send(res, 502, { error: 'The AI service returned an error.' });
+        }
+        text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
+      }
+      return send(res, 200, { text });
+    }
+
+    if (req.method === 'POST' && req.url === '/api/tts') {
+      if (!GKEY) return send(res, 501, { error: 'Server voice needs GEMINI_API_KEY.' });
+      if (ACCESS_CODE && req.headers['x-access-code'] !== ACCESS_CODE) {
+        return send(res, 401, { error: 'Wrong access code.' });
+      }
+      const body = JSON.parse(await readBody(req));
+      const text = String(body.text || '').slice(0, 1000).trim();
+      if (!text) return send(res, 400, { error: 'No text.' });
+      const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + TTS_MODEL + ':generateContent', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': GKEY },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text }] }],
+          generationConfig: {
+            responseModalities: ['AUDIO'],
+            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: TTS_VOICE } } }
+          }
+        })
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        console.error('TTS error:', JSON.stringify(data));
+        return send(res, 502, { error: 'Voice service error.' });
+      }
+      const part = (((data.candidates || [])[0] || {}).content || {}).parts || [];
+      const inline = (part[0] || {}).inlineData;
+      if (!inline || !inline.data) {
+        console.error('TTS error: no audio in response');
+        return send(res, 502, { error: 'No audio returned.' });
+      }
+      const wav = wavFromPcm(Buffer.from(inline.data, 'base64'), 24000);
+      res.writeHead(200, { 'Content-Type': 'audio/wav', 'Content-Length': wav.length });
+      return res.end(wav);
+    }
+
+    send(res, 404, { error: 'Not found' });
+  } catch (err) {
+    console.error(err);
+    send(res, 500, { error: 'Server error.' });
+  }
+});
+
+server.listen(PORT, () => console.log('TJ is running on port ' + PORT));
