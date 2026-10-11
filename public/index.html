@@ -3,31 +3,32 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#101226">
+<meta name="theme-color" content="#f4ead3">
 <title>TJ</title>
 <style>
-:root{--bg:#101226;--panel:#1a1d3a;--ink:#f2f0ff;--muted:#9a9cc4;--listen:#2ee6c0;--think:#8c7bff;--speak:#ffb347;--line:#2b2f5a}
+:root{--bg:#f4ead3;--panel:#fff9ea;--ink:#2e2510;--muted:#6f5d33;--idle:#e6d4a3;--listen:#ffcc33;--think:#f2a516;--speak:#ffe08a;--line:#d9c690}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{background:var(--bg);color:var(--ink);font-family:"Noto Sans Telugu","Segoe UI",system-ui,sans-serif;display:flex;flex-direction:column;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
 header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;gap:10px}
-header b{font-size:20px;letter-spacing:.5px}
+header b{font-size:22px;letter-spacing:.5px;background:var(--listen);padding:3px 14px;border-radius:10px}
 select,input{font:inherit;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
 input{width:120px}
+input::placeholder{color:var(--muted)}
 main{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:10px 18px;min-height:0}
-#orb{width:min(58vw,240px);aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;color:#101226;font-size:20px;font-weight:700;background:var(--muted);transition:background .25s,transform .25s;box-shadow:0 0 0 0 rgba(255,255,255,.0)}
+#orb{width:min(58vw,240px);aspect-ratio:1;border-radius:50%;border:0;cursor:pointer;color:var(--ink);font-size:22px;font-weight:700;background:var(--idle);box-shadow:0 10px 26px rgba(120,90,10,.25),inset 0 0 0 6px rgba(255,255,255,.4);transition:background .25s,transform .25s}
 #orb:focus-visible{outline:3px solid var(--ink);outline-offset:6px}
 #orb[data-s="listening"]{background:var(--listen);animation:pulse 1.6s ease-in-out infinite}
 #orb[data-s="thinking"]{background:var(--think);animation:pulse 0.9s ease-in-out infinite}
 #orb[data-s="speaking"]{background:var(--speak);animation:pulse 1.2s ease-in-out infinite}
-@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @media (prefers-reduced-motion:reduce){#orb{animation:none!important}}
-#status{font-size:18px;min-height:26px;text-align:center}
+#status{font-size:19px;font-weight:600;min-height:26px;text-align:center}
 #interim{color:var(--muted);min-height:24px;text-align:center;max-width:620px}
-#notice{color:var(--speak);text-align:center;max-width:620px;min-height:20px;font-size:14px}
+#notice{color:#8a4b00;text-align:center;max-width:620px;min-height:20px;font-size:14px}
 #lines{width:100%;max-width:620px;overflow-y:auto;max-height:30vh;display:flex;flex-direction:column;gap:8px}
 .l{padding:9px 13px;border-radius:14px;line-height:1.5;max-width:88%}
-.u{align-self:flex-end;background:var(--line)}
+.u{align-self:flex-end;background:var(--listen)}
 .a{align-self:flex-start;background:var(--panel);border:1px solid var(--line)}
 footer{padding:8px 18px 14px;text-align:center;font-size:12px;color:var(--muted)}
 </style>
